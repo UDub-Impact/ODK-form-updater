@@ -4,12 +4,12 @@
 function onOpen() {
   // Get the UI
   const ui = SpreadsheetApp.getUi();
-  
+
   // Create a new menu and add items to it
-  ui.createMenu('ODK')
-    .addItem('Create new draft form', 'createDraftForm')
-    .addItem('Create new form', 'createForm')
-    .addItem('Configure', 'configure')
+  ui.createMenu("ODK Form Updater")
+    .addItem("Update existing form draft", "createDraftForm")
+    .addItem("Create new form", "createForm")
+    .addItem("Configure", "configure")
     .addToUi();
 }
 
@@ -21,7 +21,7 @@ function configure() {
   const ui = SpreadsheetApp.getUi();
   const widget = HtmlService.createHtmlOutputFromFile("ConfigurationForm.html");
   widget.setHeight(400);
-  ui.showModalDialog(widget, 'Configuration');
+  ui.showModalDialog(widget, "Configuration");
 }
 
 
@@ -31,43 +31,18 @@ function configure() {
  * If the response status of the request is not 200, the user is notified through an alert message.
  */
 function createDraftForm() {
-  // Get user properties and configuration settings
-  const properties = PropertiesService.getUserProperties();
-  const email = properties.getProperty("email");
-  const password = properties.getProperty("password");
-  const formId = properties.getProperty("formId");
   const formUrl = getFormUrl();
-  const sessionUrl = getSessionUrl();
-
-  // Check if any required properties are missing and notify user with a toast message
-  if (!email || !password || !formId || !formUrl || !sessionUrl) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('Get Config error: Reconfigure');
+  const prep = prepareRequest();
+  if (prep === null) {
     return;
-  }
-
-  // Get authentication token using user credentials
-  const token = getToken(email, password, sessionUrl);
-
-  // If authentication fails, notify user with a toast message
-  if (!token) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('Authentication error: Reconfigure');
-    return;
-  }
-
-  // Get sheet data from the current spreadsheet
-  const sheet = getSheet();
-
-  // If sheet data is invalid, notify user with a toast message
-  if (!sheet) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('Sheet error: Invalid sheet');
   }
 
   // Confirm with user that they want to proceed with the form creation
   const ui = SpreadsheetApp.getUi();
   const confirmation = ui.alert(
-    'Are you sure you want to continue?\n\n' +
-    'Email: ' + email + "\n" +
-    'Form Url: ' + formUrl + "\n",
+    "Are you sure you want to continue?\n\n" +
+    "Email: " + prep["email"] + "\n" +
+    "Form Url: " + formUrl + "\n",
     ui.ButtonSet.YES_NO);
 
   // If user cancels the confirmation, stop form creation
@@ -75,28 +50,8 @@ function createDraftForm() {
     return;
   }
 
-  // Create draft form in ODK Central
-  const response = UrlFetchApp.fetch(
-    formUrl + '/draft?ignoreWarnings=false', {
-    'method': 'post',
-    'muteHttpExceptions': true,
-    'contentType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'headers': {
-      'Authorization': 'Bearer ' + token,
-      'X-XlsForm-FormId-Fallback': formId,
-    },
-    'payload': sheet,
-  }
-  );
-
-  // If response status is not 200, notify user with an alert message containing error details
-  if (response.getResponseCode() !== 200) {
-    const error = JSON.parse(response.getContentText())
-    ui.alert("Error Code: " + error["code"] + "\nMessage: " + error["message"]);
-  } else {
-    // If form creation is successful, notify user with a toast message
-    SpreadsheetApp.getActiveSpreadsheet().toast('Success: Create draft form');
-  }
+  postRequest(formUrl + "/draft?ignoreWarnings=false",
+    prep["token"], prep["formId"], prep["sheet"], "Create draft form");
 }
 
 
@@ -106,44 +61,19 @@ function createDraftForm() {
  * If the response status of the request is not 200, the user is notified through an alert message.
  */
 function createForm() {
-  // get user configuration properties
-  const properties = PropertiesService.getUserProperties();
-  const email = properties.getProperty("email");
-  const password = properties.getProperty("password");
-  const formId = properties.getProperty("formId");
   const projectUrl = getProjectUrl();
-  const sessionUrl = getSessionUrl();
-
-  // check if any configuration properties are missing, if yes, toast and exit
-  if (!email || !password || !formId || !projectUrl || !sessionUrl) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('Get Config error: Reconfigure');
+  const prep = prepareRequest();
+  if (prep === null) {
     return;
-  }
-
-  // get authentication token using email, password and session url
-  const token = getToken(email, password, sessionUrl);
-
-  // if authentication failed, toast and exit
-  if (!token) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('Authentication error: Reconfigure');
-    return;
-  }
-
-  // get sheet data
-  const sheet = getSheet();
-
-  // if sheet data is invalid, toast and exit
-  if (!sheet) {
-    SpreadsheetApp.getActiveSpreadsheet().toast('Sheet error: Invalid sheet');
   }
 
   // ask for confirmation to continue
   const ui = SpreadsheetApp.getUi();
   const confirmation = ui.alert(
-    'Are you sure you want to continue?\n\n' +
-    'Email: ' + email + "\n" +
-    'Project Url: ' + projectUrl + "\n" +
-    'Form Id: ' + formId + "\n",
+    "Are you sure you want to continue?\n\n" +
+    "Email: " + prep["email"] + "\n" +
+    "Project Url: " + projectUrl + "\n" +
+    "Form Id: " + prep["formId"] + "\n",
     ui.ButtonSet.YES_NO);
 
   // if confirmation is NO, exit
@@ -151,26 +81,99 @@ function createForm() {
     return;
   }
 
-  // make request to create form with provided data
+  postRequest(projectUrl + "/forms?ignoreWarnings=false&publish=false",
+    prep["token"], prep["formId"], prep["sheet"], "Create new form");
+}
+
+
+/**
+ * Retrieves user configuration properties and prepares a request object with email, token,
+ * form ID, and sheet data. If any configuration properties are missing or invalid, it displays
+ * an error message and returns null.
+ *
+ * @return {Object|null} The request object containing email, token, form ID, and sheet data or
+ * null if there is an error.
+ */
+function prepareRequest() {
+  // get user configuration properties
+  const properties = PropertiesService.getUserProperties();
+  const email = properties.getProperty("email");
+  const password = properties.getProperty("password");
+  const formId = properties.getProperty("formId");
+  const sessionUrl = getSessionUrl();
+
+  // check if any configuration properties are missing, if yes, toast and exit
+  if (!email || !password || !formId || !sessionUrl) {
+    SpreadsheetApp.getActiveSpreadsheet().toast("Get Config error: Reconfigure");
+    return null;
+  }
+
+  // get authentication token using email, password and session url
+  const token = getToken(email, password, sessionUrl);
+
+  // if authentication failed, toast and exit
+  if (!token) {
+    SpreadsheetApp.getActiveSpreadsheet().toast("Authentication error: Reconfigure");
+    return null;
+  }
+
+  // get sheet data
+  const sheet = getSheet();
+
+  // if sheet data is invalid, toast and exit
+  if (!sheet) {
+    SpreadsheetApp.getActiveSpreadsheet().toast("Sheet error: Invalid sheet");
+    return null;
+  }
+
+  return {
+    "email": email,
+    "token": token,
+    "formId": formId,
+    "sheet": sheet
+  };
+}
+
+
+/**
+ * Sends a POST request to a specified URL with a token, form ID, and spreadsheet data.
+ * If the response is not 200, it displays an error message with details if available.
+ * Otherwise, it displays a success message.
+ *
+ * @param {string} url - The URL to send the request to.
+ * @param {string} token - The token to include in the request header.
+ * @param {string} formId - The form ID to include in the request header.
+ * @param {object} sheet - The spreadsheet data to include in the request payload.
+ * @param {string} successMessage - The message to display on success.
+ */
+function postRequest(url, token, formId, sheet, successMessage) {
   const response = UrlFetchApp.fetch(
-    projectUrl + '/forms?ignoreWarnings=false&publish=false', {
-    'method': 'post',
-    'muteHttpExceptions': true,
-    'contentType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'headers': {
-      'Authorization': 'Bearer ' + token,
-      'X-XlsForm-FormId-Fallback': formId,
+    url, {
+    "method": "post",
+    "muteHttpExceptions": true,
+    "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "headers": {
+      "Authorization": "Bearer " + token,
+      "X-XlsForm-FormId-Fallback": formId,
     },
-    'payload': sheet,
+    "payload": sheet,
   });
 
-  // if the response code is not 200, alert user with error message
   if (response.getResponseCode() !== 200) {
-    const error = JSON.parse(response.getContentText())
-    ui.alert("Error Code: " + error["code"] + "\nMessage: " + error["message"]);
+    const error = JSON.parse(response.getContentText());
+    let errorMessage = "Error Code: " + error["code"] + "\nMessage: " + error["message"];
+
+    // Add details if it exists
+    if ("details" in error) {
+      errorMessage += "\nDetails:\n\n";
+      for (let key in error["details"]) {
+        errorMessage += key + ": " + JSON.stringify(error["details"][key]) + "\n";
+      }
+    }
+
+    SpreadsheetApp.getUi().alert(errorMessage);
   } else {
-    // if response code is 200, toast success message
-    SpreadsheetApp.getActiveSpreadsheet().toast('Success: Create new form');
+    SpreadsheetApp.getActiveSpreadsheet().toast("Success: " + successMessage);
   }
 }
 
@@ -194,7 +197,7 @@ function getSheet() {
   const token = ScriptApp.getOAuthToken();
   const response = UrlFetchApp.fetch(url, {
     headers: {
-      'Authorization': 'Bearer ' + token
+      "Authorization": "Bearer " + token
     }
   });
 
@@ -222,7 +225,7 @@ function setConfig(email, password, baseUrl, projectId, formId) {
     "projectId": projectId,
     "formId": formId
   });
-  SpreadsheetApp.getActiveSpreadsheet().toast('Success: Configuration');
+  SpreadsheetApp.getActiveSpreadsheet().toast("Success: Configuration");
 }
 
 /**
@@ -283,14 +286,14 @@ function getConfigWithNoPassword() {
 function getToken(email, password, sessionUrl) {
   // Define the request body and parameters.
   const bodyOfRequest = {
-    'email': email,
-    'password': password
+    "email": email,
+    "password": password
   };
   const parametersOfRequest = {
-    'method': 'post',
-    'contentType': 'application/json',
-    'payload': JSON.stringify(bodyOfRequest),
-    'muteHttpExceptions': true
+    "method": "post",
+    "contentType": "application/json",
+    "payload": JSON.stringify(bodyOfRequest),
+    "muteHttpExceptions": true
   };
 
   // Send the POST request to the session URL.
