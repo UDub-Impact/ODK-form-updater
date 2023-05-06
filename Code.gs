@@ -37,21 +37,24 @@ function createDraftForm() {
     return;
   }
 
-  // Confirm with user that they want to proceed with the form creation
+  errorMessage = postRequest(formUrl + "/draft?ignoreWarnings=false",
+    prep["token"], prep["formId"], prep["sheet"], "Create draft form");
+
+  if (errorMessage == null) {
+    return;
+  }    
+
   const ui = SpreadsheetApp.getUi();
   const confirmation = ui.alert(
-    "Are you sure you want to continue?\n\n" +
-    "Email: " + prep["email"] + "\n" +
-    "Form Url: " + formUrl + "\n",
+    errorMessage + "\n" +
+    "Do you want to resubmit with ignoreWarnings=true?\n",
     ui.ButtonSet.YES_NO);
 
-  // If user cancels the confirmation, stop form creation
-  if (confirmation == ui.Button.NO) {
-    return;
+  // if confirmation is YES
+  if (confirmation == ui.Button.YES) {
+    postRequest(formUrl + "/draft?ignoreWarnings=true",
+      prep["token"], prep["formId"], prep["sheet"], "Create draft form");
   }
-
-  postRequest(formUrl + "/draft?ignoreWarnings=false",
-    prep["token"], prep["formId"], prep["sheet"], "Create draft form");
 }
 
 
@@ -67,22 +70,24 @@ function createForm() {
     return;
   }
 
-  // ask for confirmation to continue
+  errorMessage = postRequest(projectUrl + "/forms?ignoreWarnings=false&publish=false",
+    prep["token"], prep["formId"], prep["sheet"], "Create new form");
+
+  if (errorMessage == null) {
+    return;
+  }    
+
   const ui = SpreadsheetApp.getUi();
   const confirmation = ui.alert(
-    "Are you sure you want to continue?\n\n" +
-    "Email: " + prep["email"] + "\n" +
-    "Project Url: " + projectUrl + "\n" +
-    "Form Id: " + prep["formId"] + "\n",
+    errorMessage + "\n" +
+    "Do you want to resubmit with ignoreWarnings=true?\n",
     ui.ButtonSet.YES_NO);
 
-  // if confirmation is NO, exit
-  if (confirmation == ui.Button.NO) {
-    return;
+  // if confirmation is YES
+  if (confirmation == ui.Button.YES) {
+    postRequest(projectUrl + "/forms?ignoreWarnings=false&publish=false",
+      prep["token"], prep["formId"], prep["sheet"], "Create new form");
   }
-
-  postRequest(projectUrl + "/forms?ignoreWarnings=false&publish=false",
-    prep["token"], prep["formId"], prep["sheet"], "Create new form");
 }
 
 
@@ -104,7 +109,7 @@ function prepareRequest() {
 
   // check if any configuration properties are missing, if yes, toast and exit
   if (!email || !password || !formId || !sessionUrl) {
-    SpreadsheetApp.getActiveSpreadsheet().toast("Get Config error: Reconfigure");
+    SpreadsheetApp.getActiveSpreadsheet().toast("No authentication detected. Please configure in the menu");
     return null;
   }
 
@@ -113,7 +118,7 @@ function prepareRequest() {
 
   // if authentication failed, toast and exit
   if (!token) {
-    SpreadsheetApp.getActiveSpreadsheet().toast("Authentication error: Reconfigure");
+    SpreadsheetApp.getActiveSpreadsheet().toast("Authentication failed. Please reconfigure in the menu");
     return null;
   }
 
@@ -122,7 +127,7 @@ function prepareRequest() {
 
   // if sheet data is invalid, toast and exit
   if (!sheet) {
-    SpreadsheetApp.getActiveSpreadsheet().toast("Sheet error: Invalid sheet");
+    SpreadsheetApp.getActiveSpreadsheet().toast("Sheet error. Please validate the current sheet");
     return null;
   }
 
@@ -137,7 +142,9 @@ function prepareRequest() {
 
 /**
  * Sends a POST request to a specified URL with a token, form ID, and spreadsheet data.
- * If the response is not 200, it displays an error message with details if available.
+ * If the response is not 200,
+ *  - if it is an error, displays an error message with details if available.
+ *  - if it is an warning, return the warning message
  * Otherwise, it displays a success message.
  *
  * @param {string} url - The URL to send the request to.
@@ -165,6 +172,17 @@ function postRequest(url, token, formId, sheet, successMessage) {
 
     // Add details if it exists
     if ("details" in error) {
+
+      // If it is a warning, return the warning message
+      if ("warnings" in error["details"]) {
+        errorMessage += "\n\nWarnings:\n\n";
+        for (let key in error["details"]["warnings"]) {
+          errorMessage += key + ": " + JSON.stringify(error["details"]["warnings"][key]) + "\n";
+        }
+        return errorMessage;
+      } 
+
+      // Otherwise, add error details
       errorMessage += "\nDetails:\n\n";
       for (let key in error["details"]) {
         errorMessage += key + ": " + JSON.stringify(error["details"][key]) + "\n";
@@ -172,8 +190,11 @@ function postRequest(url, token, formId, sheet, successMessage) {
     }
 
     SpreadsheetApp.getUi().alert(errorMessage);
+    return null;
+
   } else {
     SpreadsheetApp.getActiveSpreadsheet().toast("Success: " + successMessage);
+    return null;
   }
 }
 
@@ -185,13 +206,11 @@ function postRequest(url, token, formId, sheet, successMessage) {
  * @return {string|null} The data from the active spreadsheet or null if there is an error.
  */
 function getSheet() {
-  // Get the active spreadsheet and its ID.
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const spreadsheetId = spreadsheet.getId();
+  // Get the active spreadsheet ID.
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
 
-  // Retrieve the file and its export URL.
-  const file = Drive.Files.get(spreadsheetId, { supportsAllDrives: true });
-  const url = file.exportLinks[MimeType.MICROSOFT_EXCEL];
+  // Construct the export URL
+  url = "https://docs.google.com/spreadsheets/export?id=" + spreadsheetId + "&exportFormat=xlsx";
 
   // Get the OAuth token and send a GET request to the export URL.
   const token = ScriptApp.getOAuthToken();

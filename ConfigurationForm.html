@@ -52,8 +52,9 @@
       let projectUrlInput = document.getElementById("floatingProjectUrl");
       let formIdInput = document.getElementById("floatingFormId");
 
-      // https://<hostname>/v1/projects/<projectid>
-      let URL_REGEX = /^(https:\/\/[^\/]+)\/v1\/projects\/([^\/]+)$/s; 
+      // Accept both frontend project url or API in url (v1 or #)
+      // https://<hostname>/[v1|#]/projects/<projectid>
+      let URL_REGEX = /^(https:\/\/[^\/]+)\/[v1|#]\/projects\/([^\/]+)$/s; 
 
       /**
        * Display the previous configuration to the form
@@ -135,7 +136,7 @@
         // Validate url (regex) to ensure the parsing of base url, projectid and formid
         if (!URL_REGEX.test(projectUrlInput.value)) {
           projectUrlInput.classList.add("is-invalid");
-          projectUrlInput.setCustomValidity("Format: https://<hostname>/v1/projects/<projectid>");
+          projectUrlInput.setCustomValidity("Format: https://<hostname>/#/projects/<projectid>");
           errorFlag = true;
         }
 
