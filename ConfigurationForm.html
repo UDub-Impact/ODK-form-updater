@@ -54,7 +54,7 @@
 
       // Accept both frontend project url or API in url (v1 or #)
       // https://<hostname>/[v1|#]/projects/<projectid>
-      let URL_REGEX = /^(https:\/\/[^\/]+)\/[v1|#]\/projects\/([^\/]+)$/s; 
+      let URL_REGEX = /^(https:\/\/[^\/]+)\/(v1|#)\/projects\/([^\/]+)$/s; 
 
       /**
        * Display the previous configuration to the form
@@ -136,7 +136,7 @@
         // Validate url (regex) to ensure the parsing of base url, projectid and formid
         if (!URL_REGEX.test(projectUrlInput.value)) {
           projectUrlInput.classList.add("is-invalid");
-          projectUrlInput.setCustomValidity("Format: https://<hostname>/#/projects/<projectid>");
+          projectUrlInput.setCustomValidity("Format: https://<hostname>/[#|v1]/projects/<projectid>");
           errorFlag = true;
         }
 
@@ -154,10 +154,10 @@
 
         const email_value = emailInput.value;
         const password_value = passwordInput.value;
-        const url = projectUrlInput.value.match(URL_REGEX); // Extract [_, base url, project id]
+        const url = projectUrlInput.value.match(URL_REGEX); // Extract [_, base url, [#|v1], project id]
         const formId = formIdInput.value;
 
-        google.script.run.setConfig(email_value, password_value, url[1], url[2], formId);
+        google.script.run.setConfig(email_value, password_value, url[1], url[3], formId);
         google.script.host.close();
       });
     })();
