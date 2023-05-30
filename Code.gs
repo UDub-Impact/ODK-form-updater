@@ -250,11 +250,14 @@ function setConfig(email, password, baseUrl, projectId, formId) {
 /**
  * Returns the session URL
  * 
- * @return {string} The session URL.
+ * @return {string|null} The session URL.
  */
 function getSessionUrl() {
   const properties = PropertiesService.getUserProperties();
-  return properties.getProperty("baseUrl") + "/v1/sessions"
+  if (properties.getProperty("baseUrl") !== null) {
+    return properties.getProperty("baseUrl") + "/v1/sessions";
+  }
+  return null;
 }
 
 /**
@@ -264,9 +267,12 @@ function getSessionUrl() {
  */
 function getProjectUrl() {
   const properties = PropertiesService.getUserProperties();
-  return properties.getProperty("baseUrl") +
-    "/v1/projects/" +
-    properties.getProperty("projectId")
+  if (properties.getProperty("baseUrl") !== null && properties.getProperty("projectId") !== null) {
+    return properties.getProperty("baseUrl") +
+      "/v1/projects/" +
+      properties.getProperty("projectId")
+  }
+  return null;
 }
 
 /**
@@ -276,9 +282,12 @@ function getProjectUrl() {
  */
 function getFormUrl() {
   const properties = PropertiesService.getUserProperties();
-  return getProjectUrl() +
-    "/forms/" +
-    properties.getProperty("formId");
+  if (getProjectUrl() !== null && properties.getProperty("formId") !== null) {
+    return getProjectUrl() +
+      "/forms/" +
+      properties.getProperty("formId");
+  }
+  return null;
 }
 
 /**
